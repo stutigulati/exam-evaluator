@@ -1,0 +1,140 @@
+[
+  {
+    "name": "Aayushi",
+    "email": "aayushi@gog.com",
+    "role": "gog",
+    "department": "",
+    "assignedExams": [],
+    "instituteId": null,
+    "passwordHash": "12IfXl7b0qE/IEAXQXEt+A==:xEH/KctMmlm4OK5XdUyGGEr3Ga8D0/RpZj+CJmK4tkk=",
+    "createdBy": null,
+    "createdAt": "2026-05-23T06:07:42.309387+00:00",
+    "updatedAt": "2026-05-23T06:07:42.309387+00:00",
+    "_id": "b03b3db990c741809f2f1a0518c6fc82"
+  },
+  {
+    "name": "stuti",
+    "email": "stuti@admin.com",
+    "role": "admin",
+    "department": "CSE",
+    "assignedExams": [],
+    "instituteId": "0c3de1d61f574fe6bbf37d9af256f384",
+    "passwordHash": "QIHVjVbOenDROINnjVtt3w==:ElDORxi3FicpgHaiK9nG3RM47zOKmCzSHm1VlTx/XeQ=",
+    "createdBy": "b03b3db990c741809f2f1a0518c6fc82",
+    "createdAt": "2026-05-23T06:21:44.392181+00:00",
+    "updatedAt": "2026-05-23T06:21:44.392181+00:00",
+    "_id": "25dfde88dc594ae3b2d508db63025723"
+  },
+  {
+    "name": "neeraj",
+    "email": "neeraj@evaluator.com",
+    "role": "evaluator",
+    "department": "unix",
+    "assignedExams": [
+      "aeaaeef205ba40e4acfa01f7620f169d"
+    ],
+    "instituteId": "0c3de1d61f574fe6bbf37d9af256f384",
+    "passwordHash": "N+WsjfMZ2hs5D7obUy+xyw==:7LZk+r7/fkaQAtegGH8BqajQ630C/Z0HxLz427yrZBo=",
+    "createdBy": "b03b3db990c741809f2f1a0518c6fc82",
+    "createdAt": "2026-05-23T06:23:22.173601+00:00",
+    "updatedAt": "2026-05-23T06:23:22.173601+00:00",
+    "_id": "6e1a50cdc8144b0c8e03b12b40bd372c"
+  },
+  {
+    "name": "trisha",
+    "email": "trish@superadmin.com",
+    "role": "super_admin",
+    "department": "administration",
+    "assignedExams": [],
+    "instituteId": "9683b6c0cd6844a78db07bdc804a88d2",
+    "passwordHash": "DVkzuVa3LopjXt2/F5RgPQ==:XspUGmc56+PrWCFl7bdMv7ycuTZvWsfv5tsO9JbkHdM=",
+    "createdBy": "b03b3db990c741809f2f1a0518c6fc82",
+    "createdAt": "2026-05-23T06:36:38.512983+00:00",
+    "updatedAt": "2026-05-23T06:36:38.512983+00:00",
+    "_id": "a01f7fee49f0466e87f1becdba14732e"
+  },
+  {
+    "name": "trisha gaur",
+    "email": "trisha@superadmin.com",
+    "role": "super_admin",
+    "department": "admin",
+    "assignedExams": [],
+    "instituteId": "9683b6c0cd6844a78db07bdc804a88d2",
+    "passwordHash": "umenvEfwHvOXz9+kO37mSA==:t8PFJY7bj0rfwu2yY8p4kZx4gDlOL8ZPtBJQpx1mN40=",
+    "createdBy": "b03b3db990c741809f2f1a0518c6fc82",
+    "createdAt": "2026-05-23T06:47:39.140304+00:00",
+    "updatedAt": "2026-05-23T06:47:39.140896+00:00",
+    "_id": "760eeae22f864ce4827652148695309f"
+  },
+  {
+    "name": "Aditi",
+    "email": "aditi@evaluator.com",
+    "role": "evaluator",
+    "department": "administration",
+    "assignedExams": [
+      "56d5e5c8f1e94989ab4ff0036a63a1cb"
+    ],
+    "instituteId": "9683b6c0cd6844a78db07bdc804a88d2",
+    "passwordHash": "iB8x7m9fWMFAk4SxOPGDnA==:wOSNm6Gr9zebVpX4LYvTbSzDi+D9imBwoFyxL7yYCfk=",
+    "createdBy": "760eeae22f864ce4827652148695309f",
+    "createdAt": "2026-05-23T06:57:59.559708+00:00",
+    "updatedAt": "2026-05-23T06:57:59.559708+00:00",
+    "_id": "3b678e3bdb664131b54647e602a4f375"
+  },
+  {
+    "name": "anshika",
+    "email": "anshika@evaluator.com",
+    "role": "evaluator",
+    "department": "cse",
+    "assignedExams": [
+      "aeaaeef205ba40e4acfa01f7620f169d"
+    ],
+    "instituteId": "0c3de1d61f574fe6bbf37d9af256f384",
+    "passwordHash": "riLynsfrKnKmnJSpSXPHgg==:TDyFUM0M3oj2UZLr3O7B7xxbCOJWuFLkaJ1h9kJfhtY=",
+    "createdBy": "25dfde88dc594ae3b2d508db63025723",
+    "createdAt": "2026-05-23T08:21:24.515402+00:00",
+    "updatedAt": "2026-05-23T08:21:24.515402+00:00",
+    "_id": "c87caa4108a142fbb04d43618fbfa21a"
+  },
+  {
+    "name": "nitesh",
+    "email": "nitesh@gog.com",
+    "role": "super_admin",
+    "department": "administration",
+    "assignedExams": [],
+    "instituteId": "9683b6c0cd6844a78db07bdc804a88d2",
+    "passwordHash": "+naiEBPCL6N6lplAIM9tiQ==:xL/qd5GYmQv5zDasVjXNDJhrMwQnwj5DdR8VG5xq+Pw=",
+    "createdBy": "b03b3db990c741809f2f1a0518c6fc82",
+    "createdAt": "2026-05-23T12:22:58.884788+00:00",
+    "updatedAt": "2026-05-23T12:22:58.884788+00:00",
+    "_id": "8df591bd69884332a3c391075262f301"
+  },
+  {
+    "name": "virat",
+    "email": "virat@superadmin.com",
+    "role": "super_admin",
+    "department": "adminstration",
+    "assignedExams": [],
+    "instituteId": "0c3de1d61f574fe6bbf37d9af256f384",
+    "passwordHash": "EEeB2fL+4vcdAjNLlSIMBQ==:hSPPBfwlCdD0QDbun27b/oqsUfHP3fyjEmkeYrHzo0Q=",
+    "createdBy": "b03b3db990c741809f2f1a0518c6fc82",
+    "createdAt": "2026-05-23T17:27:20.468780+00:00",
+    "updatedAt": "2026-05-23T17:27:20.468780+00:00",
+    "_id": "7bcdb540c14148dea59ee2bd945d15f8"
+  },
+  {
+    "name": "anushka",
+    "email": "anushka@admin.com",
+    "role": "admin",
+    "department": "cse",
+    "assignedExams": [
+      "56d5e5c8f1e94989ab4ff0036a63a1cb"
+    ],
+    "instituteId": "9683b6c0cd6844a78db07bdc804a88d2",
+    "passwordHash": "U2oPgGcl+W2mx6BnoVQmRg==:uyA9o9tRd4HBufD9UBeJpCx4ZfWqtR3e595tah2vhXI=",
+    "createdBy": "760eeae22f864ce4827652148695309f",
+    "createdAt": "2026-05-23T17:30:33.745919+00:00",
+    "updatedAt": "2026-05-23T17:30:33.745919+00:00",
+    "_id": "431e8f51ffe242bcb99f6d24e5775c2b"
+  }
+]

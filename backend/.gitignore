@@ -1,0 +1,19 @@
+# Environment files
+.env
+.env.local
+
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# Node / React
+node_modules/
+dist/
+
+# Credentials
+google-creds.json
+backend/google-creds.json
+
+# macOS
+.DS_Store

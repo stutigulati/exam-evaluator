@@ -1,0 +1,40 @@
+[
+  {
+    "examName": "mid semester",
+    "subject": "unix",
+    "department": "administration",
+    "semester": "6th",
+    "date": "2026-05-24",
+    "time": "10:00",
+    "status": "schedule_approved",
+    "assignedAdmin": "25dfde88dc594ae3b2d508db63025723",
+    "assignedEvaluators": [
+      "6e1a50cdc8144b0c8e03b12b40bd372c",
+      "c87caa4108a142fbb04d43618fbfa21a"
+    ],
+    "createdBy": "25dfde88dc594ae3b2d508db63025723",
+    "instituteId": "0c3de1d61f574fe6bbf37d9af256f384",
+    "createdAt": "2026-05-23T06:44:03.418279+00:00",
+    "updatedAt": "2026-05-23T17:31:59.785223+00:00",
+    "_id": "aeaaeef205ba40e4acfa01f7620f169d",
+    "scheduleRemarks": ""
+  },
+  {
+    "examName": "cse",
+    "subject": "cse",
+    "department": "aiml",
+    "semester": "4th",
+    "date": "2026-06-05",
+    "time": "10:01",
+    "status": "admin_assigned",
+    "assignedAdmin": "431e8f51ffe242bcb99f6d24e5775c2b",
+    "assignedEvaluators": [
+      "3b678e3bdb664131b54647e602a4f375"
+    ],
+    "createdBy": "760eeae22f864ce4827652148695309f",
+    "instituteId": "9683b6c0cd6844a78db07bdc804a88d2",
+    "createdAt": "2026-05-23T17:31:05.805395+00:00",
+    "updatedAt": "2026-05-24T04:52:38.606871+00:00",
+    "_id": "56d5e5c8f1e94989ab4ff0036a63a1cb"
+  }
+]

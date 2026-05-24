@@ -1,0 +1,38 @@
+[
+  {
+    "name": "Lakshmi Narain college of Science and Technology",
+    "code": "0103",
+    "address": "Bhopal",
+    "contactEmail": "lnct@ac.in",
+    "contactPhone": "+919876543210",
+    "status": "active",
+    "createdBy": "b03b3db990c741809f2f1a0518c6fc82",
+    "createdAt": "2026-05-23T06:09:42.883842+00:00",
+    "updatedAt": "2026-05-23T06:09:42.883842+00:00",
+    "_id": "0c3de1d61f574fe6bbf37d9af256f384"
+  },
+  {
+    "name": "Oriental institute of science and technology",
+    "code": "1234",
+    "address": "delhi",
+    "contactEmail": "oriental@ac.in",
+    "contactPhone": "+91 234558889",
+    "status": "active",
+    "createdBy": "b03b3db990c741809f2f1a0518c6fc82",
+    "createdAt": "2026-05-23T06:19:37.618351+00:00",
+    "updatedAt": "2026-05-23T06:19:37.618351+00:00",
+    "_id": "9683b6c0cd6844a78db07bdc804a88d2"
+  },
+  {
+    "name": "lakshmi narain",
+    "code": "123",
+    "address": "123",
+    "contactEmail": "gauraayushi2004@gmail.com",
+    "contactPhone": "+919755230164",
+    "status": "active",
+    "createdBy": "b03b3db990c741809f2f1a0518c6fc82",
+    "createdAt": "2026-05-23T17:26:37.513066+00:00",
+    "updatedAt": "2026-05-23T17:26:37.513066+00:00",
+    "_id": "7709fbc23c7746d4a7587634ca09ca26"
+  }
+]
