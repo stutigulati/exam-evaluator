@@ -1,18 +1,13 @@
-const STORAGE_KEY = 'gradeai:evaluations';
-
-function readRecords() {
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeRecords(records) {
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
-}
+/**
+ * evaluations.js
+ * Previously used localStorage for persistence.
+ * Now delegates to the MongoDB-backed REST API.
+ *
+ * All load/delete operations are async (return Promises).
+ * saveEvaluationRecord is a no-op here — saving now happens via the
+ * /evaluation-results API call in EvaluatePage.jsx.
+ */
+import { api } from './api';
 
 function confidenceLabel(result) {
   const questions = Array.isArray(result.questions) ? result.questions : [];
@@ -28,37 +23,53 @@ function confidenceLabel(result) {
   return 'Low';
 }
 
-export function loadEvaluationRecords() {
-  if (typeof window === 'undefined') return [];
-  return readRecords();
+/**
+ * Load evaluation records from MongoDB via the API.
+ * Returns a Promise<Array>.
+ */
+export async function loadEvaluationRecords() {
+  try {
+    const res = await api.get('/evaluation-results');
+    const raw = Array.isArray(res.data) ? res.data : [];
+    // Normalise to the shape the dashboard expects
+    return raw.map((r) => ({
+      id:          r.id || r._id || '',
+      studentName: r.studentName || 'Unknown Student',
+      rollNumber:  r.rollNumber  || '',
+      classGrade:  r.classGrade  || '',
+      subject:     r.subject     || 'Unspecified',
+      marks:       Number(r.marks)      || 0,
+      max:         Number(r.maxMarks)   || 0,
+      percentage:  Number(r.percentage) || 0,
+      grade:       r.grade || '',
+      date:        r.createdAt ? r.createdAt.slice(0, 10) : new Date().toISOString().slice(0, 10),
+      confidence:  r.report ? confidenceLabel(r.report) : 'Medium',
+      report:      r.report || null,
+    }));
+  } catch {
+    return [];
+  }
 }
 
-export function saveEvaluationRecord(result) {
-  if (typeof window === 'undefined' || !result) return null;
-
-  const now = new Date();
-  const { answerSheetFile, ...serializableResult } = result;
-  const record = {
-    id: result.id || `eval-${now.getTime()}`,
-    studentName: result.studentName?.trim() || 'Unknown Student',
-    rollNumber: result.rollNumber?.trim() || '',
-    classGrade: result.classGrade?.trim() || '',
-    subject: result.subject || 'Unspecified',
-    marks: Number(result.total_marks_awarded) || 0,
-    max: Number(result.total_max_marks) || 0,
-    percentage: Number(result.percentage) || 0,
-    grade: result.grade_letter || result.grade || '',
-    date: now.toISOString().slice(0, 10),
-    confidence: confidenceLabel(result),
-    report: serializableResult,
-  };
-
-  const records = readRecords();
-  writeRecords([record, ...records]);
-  return record;
+/**
+ * saveEvaluationRecord is kept as a compatibility shim.
+ * The real save now happens in EvaluatePage.jsx via /evaluation-results API.
+ * Returns null (no-op).
+ */
+export function saveEvaluationRecord(_result) {
+  // No-op: saving is handled via api.post('/evaluation-results') in EvaluatePage.jsx
+  return null;
 }
 
-export function deleteEvaluationRecord(id) {
-  if (typeof window === 'undefined') return;
-  writeRecords(readRecords().filter((record) => record.id !== id));
+/**
+ * Delete an evaluation record from MongoDB via the API.
+ * Returns a Promise.
+ */
+export async function deleteEvaluationRecord(id) {
+  if (!id) return;
+  try {
+    await api.delete(`/evaluation-results/${id}`);
+  } catch (err) {
+    console.warn('Could not delete evaluation result:', err);
+  }
 }

@@ -687,7 +687,7 @@ export default function RoleWorkspace({ role }) {
           <UserForm role="super_admin" targetRole="admin" institutes={data.institutes} onDone={m => { setMessage(m); refresh(); }} />
         }
         {section === 'schedules' && isAtLeast(role, 'super_admin') && <>
-          <ExamForm role={role} onDone={setMessage} />
+          <ExamForm role={role} onDone={m => { setMessage(m); refresh(); }} />
           <DataTable columns={[
             { key: 'examName', label: 'Exam' }, { key: 'subject', label: 'Subject' },
             { key: 'date', label: 'Date' },
@@ -739,7 +739,7 @@ export default function RoleWorkspace({ role }) {
           <AssignEvaluator exams={data.exams} evaluators={evaluators} onDone={m => { setMessage(m); refresh(); }} />
         }
         {section === 'schedule'         && isAtLeast(role, 'admin') &&
-          <ExamForm role={role} onDone={setMessage} />
+          <ExamForm role={role} onDone={m => { setMessage(m); refresh(); }} />
         }
         {section === 'papers'           && isAtLeast(role, 'admin') &&
           <DataTable columns={[

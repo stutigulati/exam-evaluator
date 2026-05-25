@@ -1,0 +1,42 @@
+# ── Python ────────────────────────────────────────────────────────────────────
+venv/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ── Environment variables (NEVER commit real secrets) ─────────────────────────
+backend/.env
+.env
+.env.local
+.env.*.local
+
+# Keep the example file
+!backend/.env.example
+
+# ── Node / Frontend ───────────────────────────────────────────────────────────
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/.cache/
+
+# ── macOS ─────────────────────────────────────────────────────────────────────
+.DS_Store
+**/.DS_Store
+
+# ── Google credentials ────────────────────────────────────────────────────────
+backend/google-creds.json
+
+# ── Local JSON data (legacy file storage — replaced by MongoDB) ───────────────
+backend/data/
+
+# ── IDE ───────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo

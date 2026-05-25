@@ -3,11 +3,9 @@ import hashlib
 import hmac
 import json
 import os
-import threading
 import time
 import uuid
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
@@ -17,6 +15,12 @@ try:
     import boto3
 except Exception:
     boto3 = None
+
+try:
+    from pymongo import MongoClient
+    _PYMONGO_AVAILABLE = True
+except Exception:
+    _PYMONGO_AVAILABLE = False
 
 router = APIRouter(prefix="/api", tags=["RBAC"])
 ROLES = {"gog", "super_admin", "admin", "evaluator"}
@@ -35,124 +39,231 @@ ANSWER_SCRIPT_PATTERN = (
     r"(?P<subject>[A-Za-z0-9-]+)_Answer_Script\.pdf$"
 )
 
-# ─── Storage ──────────────────────────────────────────────────────────────────
-# Always resolves to  <folder where rbac.py lives>/data/
-DATA_DIR = Path(__file__).resolve().parent / "data"
-DATA_DIR.mkdir(parents=True, exist_ok=True)
+# ─── MongoDB Storage ──────────────────────────────────────────────────────────
+# Uses pymongo with string UUID _id (matching existing behaviour).
+# Falls back to JSON file storage if MONGODB_URI is not set.
 
-_locks: Dict[str, threading.Lock] = {}
-_locks_meta = threading.Lock()
+_mongo_client: Any = None
+_mongo_db_instance: Any = None
 
-def _lock(name):
-    with _locks_meta:
-        if name not in _locks:
-            _locks[name] = threading.Lock()
-        return _locks[name]
 
-def _path(name):
-    return DATA_DIR / f"{name}.json"
+class _MongoCollection:
+    """Thin wrapper around a pymongo Collection.
+    Preserves the existing interface used throughout rbac.py:
+      - insert_one sets a string UUID as _id (matching old JSON behaviour)
+      - find / find_one / update_one / delete_one / count_documents work
+        exactly as in pymongo (same method signatures)
+    """
+    def __init__(self, col):
+        self._col = col
 
-def _load(name):
-    p = _path(name)
+    def count_documents(self, query: Dict[str, Any]) -> int:
+        return self._col.count_documents(query)
+
+    def find_one(self, query: Dict[str, Any]) -> Optional[Dict]:
+        return self._col.find_one(query)
+
+    def find(self, query: Optional[Dict[str, Any]] = None, projection=None):
+        q = query or {}
+        return self._col.find(q)
+
+    def insert_one(self, doc: Dict[str, Any]):
+        if "_id" not in doc:
+            doc["_id"] = uuid.uuid4().hex
+        return self._col.insert_one(doc)
+
+    def update_one(self, query: Dict[str, Any], update: Dict[str, Any]):
+        return self._col.update_one(query, update)
+
+    def delete_one(self, query: Dict[str, Any]):
+        return self._col.delete_one(query)
+
+
+class _MongoDB:
+    """Wraps a pymongo Database — attribute access returns a _MongoCollection."""
+    def __init__(self, db):
+        self._db = db
+
+    def __getattr__(self, name: str) -> _MongoCollection:
+        return _MongoCollection(self._db[name])
+
+
+# ─── JSON file fallback (used when MONGODB_URI is not set) ────────────────────
+import json as _json
+import threading as _threading
+from pathlib import Path as _Path
+
+_DATA_DIR = _Path(__file__).resolve().parent / "data"
+_DATA_DIR.mkdir(parents=True, exist_ok=True)
+_file_locks: Dict[str, Any] = {}
+_file_locks_meta = _threading.Lock()
+
+
+def _flock(name):
+    with _file_locks_meta:
+        if name not in _file_locks:
+            _file_locks[name] = _threading.Lock()
+        return _file_locks[name]
+
+
+def _fpath(name):
+    return _DATA_DIR / f"{name}.json"
+
+
+def _fload(name):
+    p = _fpath(name)
     if not p.exists():
         return []
     try:
         txt = p.read_text(encoding="utf-8").strip()
-        return json.loads(txt) if txt else []
+        return _json.loads(txt) if txt else []
     except Exception:
         return []
 
-def _save(name, docs):
-    _path(name).write_text(
-        json.dumps(docs, indent=2, default=str, ensure_ascii=False),
-        encoding="utf-8"
+
+def _fsave(name, docs):
+    _fpath(name).write_text(
+        _json.dumps(docs, indent=2, default=str, ensure_ascii=False),
+        encoding="utf-8",
     )
 
-def _match(doc, query):
+
+def _fmatch(doc, query):
     for k, cond in query.items():
         v = doc.get(k)
         if isinstance(cond, dict):
             if "$in" in cond:
                 hits = cond["$in"]
                 if isinstance(v, list):
-                    if not any(h in v for h in hits): return False
+                    if not any(h in v for h in hits):
+                        return False
                 else:
-                    if v not in hits: return False
+                    if v not in hits:
+                        return False
         else:
             if isinstance(v, list):
-                if cond not in v: return False
+                if cond not in v:
+                    return False
             else:
-                if v != cond: return False
+                if v != cond:
+                    return False
     return True
 
-class _Cur:
-    def __init__(self, docs): self._d = list(docs)
+
+class _JsonCursor:
+    def __init__(self, docs):
+        self._d = list(docs)
+
     def sort(self, f, d=-1):
-        self._d.sort(key=lambda x: x.get(f) or "", reverse=(d==-1))
+        self._d.sort(key=lambda x: x.get(f) or "", reverse=(d == -1))
         return self
-    def __iter__(self): return iter(self._d)
 
-class _IR:
-    def __init__(self, i): self.inserted_id = i
-class _UR:
-    def __init__(self, m): self.matched_count = m
-class _DR:
-    def __init__(self, d): self.deleted_count = d
+    def __iter__(self):
+        return iter(self._d)
 
-class _Col:
-    def __init__(self, n): self._n = n
+
+class _JsonCollection:
+    def __init__(self, n):
+        self._n = n
 
     def count_documents(self, q):
-        return sum(1 for d in _load(self._n) if _match(d, q))
+        return sum(1 for d in _fload(self._n) if _fmatch(d, q))
 
     def find_one(self, q):
-        for d in _load(self._n):
-            if _match(d, q): return d
+        for d in _fload(self._n):
+            if _fmatch(d, q):
+                return d
         return None
 
     def find(self, q=None, projection=None):
-        docs = _load(self._n)
-        if q: docs = [d for d in docs if _match(d, q)]
-        return _Cur(docs)
+        docs = _fload(self._n)
+        if q:
+            docs = [d for d in docs if _fmatch(d, q)]
+        return _JsonCursor(docs)
 
     def insert_one(self, doc):
         nid = uuid.uuid4().hex
         doc["_id"] = nid
-        with _lock(self._n):
-            docs = _load(self._n)
+        with _flock(self._n):
+            docs = _fload(self._n)
             docs.append(doc)
-            _save(self._n, docs)
-        return _IR(nid)
+            _fsave(self._n, docs)
+        return type("IR", (), {"inserted_id": nid})()
 
     def update_one(self, q, upd):
-        with _lock(self._n):
-            docs = _load(self._n)
+        with _flock(self._n):
+            docs = _fload(self._n)
             matched = 0
             for doc in docs:
-                if _match(doc, q):
+                if _fmatch(doc, q):
                     matched += 1
-                    for k, v in upd.get("$set", {}).items(): doc[k] = v
+                    for k, v in upd.get("$set", {}).items():
+                        doc[k] = v
                     for k, v in upd.get("$addToSet", {}).items():
                         lst = doc.setdefault(k, [])
-                        if isinstance(lst, list) and v not in lst: lst.append(v)
+                        if isinstance(lst, list) and v not in lst:
+                            lst.append(v)
                     break
-            _save(self._n, docs)
-        return _UR(matched)
+            _fsave(self._n, docs)
+        return type("UR", (), {"matched_count": matched})()
 
     def delete_one(self, q):
-        with _lock(self._n):
-            docs = _load(self._n)
+        with _flock(self._n):
+            docs = _fload(self._n)
             for i, doc in enumerate(docs):
-                if _match(doc, q):
+                if _fmatch(doc, q):
                     docs.pop(i)
-                    _save(self._n, docs)
-                    return _DR(1)
-        return _DR(0)
+                    _fsave(self._n, docs)
+                    return type("DR", (), {"deleted_count": 1})()
+        return type("DR", (), {"deleted_count": 0})()
 
-class _DB:
-    def __getattr__(self, n): return _Col(n)
 
-def get_db(): return _DB()
+class _JsonDB:
+    def __getattr__(self, n):
+        return _JsonCollection(n)
+
+
+# ─── get_db() — returns MongoDB if MONGODB_URI is set, else JSON fallback ────
+
+def get_db():
+    """Return the database instance (MongoDB or JSON fallback)."""
+    global _mongo_client, _mongo_db_instance
+
+    mongodb_uri = os.getenv("MONGODB_URI", "").strip()
+
+    if not mongodb_uri:
+        # No MONGODB_URI configured — use JSON file storage as fallback
+        return _JsonDB()
+
+    if not _PYMONGO_AVAILABLE:
+        raise RuntimeError(
+            "pymongo is not installed. Run: pip install pymongo[srv] --break-system-packages"
+        )
+
+    if _mongo_db_instance is not None:
+        return _mongo_db_instance
+
+    try:
+        _mongo_client = MongoClient(
+            mongodb_uri,
+            serverSelectionTimeoutMS=10_000,
+            connectTimeoutMS=10_000,
+            socketTimeoutMS=30_000,
+        )
+        # Verify connection
+        _mongo_client.admin.command("ping")
+        db_name = os.getenv("MONGODB_DB_NAME", "gradeai")
+        _mongo_db_instance = _MongoDB(_mongo_client[db_name])
+        return _mongo_db_instance
+    except Exception as exc:
+        # If MongoDB fails to connect, fall back to JSON storage with a warning
+        import sys
+        print(
+            f"[WARNING] MongoDB connection failed: {exc}\n"
+            "Falling back to JSON file storage. Set MONGODB_URI in .env to use MongoDB.",
+            file=sys.stderr,
+        )
+        return _JsonDB()
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 def utc_now(): return datetime.now(timezone.utc).isoformat()
@@ -309,6 +420,7 @@ class EvaluationResultIn(BaseModel):
     answerScriptId: Optional[str] = None
     studentName: str = ""
     rollNumber: str = ""
+    classGrade: str = ""
     subject: str = ""
     marks: float = 0
     maxMarks: float = 0
@@ -711,6 +823,17 @@ def list_er(user=Depends(current_user), db=Depends(get_db)):
         q["evaluatorId"] = {"$in": eids} if eids else {"$in": ["__none__"]}
     # gog: no filter → sees all results
     return [clean_doc(d) for d in db.evaluation_results.find(q).sort("createdAt",-1)]
+
+@router.delete("/evaluation-results/{er_id}")
+def delete_er(er_id: str, user=Depends(current_user), db=Depends(get_db)):
+    doc = db.evaluation_results.find_one({"_id": oid(er_id)})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Evaluation result not found.")
+    # Evaluators can only delete their own; gog/super_admin/admin can delete any in their scope
+    if user["role"] == "evaluator" and str(doc.get("evaluatorId")) != user["id"]:
+        raise HTTPException(status_code=403, detail="Cannot delete another evaluator's result.")
+    db.evaluation_results.delete_one({"_id": oid(er_id)})
+    return {"deleted": True, "id": er_id}
 
 # ─── Name Validation ──────────────────────────────────────────────────────────
 @router.post("/answer-scripts/validate-names")

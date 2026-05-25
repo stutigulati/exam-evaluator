@@ -3,8 +3,10 @@ import { Search, Medal, Download, FileDown, CheckSquare, Square, X, ChevronDown 
 import { Container, PageHeader } from '../components/layout/Sidebar';
 import { Badge, StatCard } from '../components/ui/primitives';
 import { cn, pctColor } from '../lib/utils';
+import { api } from '../lib/api';
 
-const ALL_RECORDS = [
+// MOCK_RECORDS — used only as fallback when no real data exists from MongoDB
+const MOCK_RECORDS = [
   { rank: 1,  name: 'Shreyash Khare',   enrollment: 'BT22CSE043', class: 'CSE A', subject: 'Algorithms',        marks: 10, max: 10, passed: true  },
   { rank: 2,  name: 'Stuti Gulati',     enrollment: 'BT22CSE041', class: 'CSE A', subject: 'Data Structures',   marks: 9,  max: 10, passed: true  },
   { rank: 3,  name: 'Nisha Verma',      enrollment: 'BT22CSE047', class: 'CSE A', subject: 'General Knowledge', marks: 9,  max: 10, passed: true  },
@@ -23,8 +25,21 @@ const ALL_RECORDS = [
   { rank: 16, name: 'Rohan Kapoor',     enrollment: 'BT22CSE048', class: 'CSE B', subject: 'Physics',           marks: 3,  max: 10, passed: false },
 ];
 
-const SUBJECTS = ['All Subjects', 'Algorithms', 'Data Structures', 'Mathematics', 'Physics', 'Chemistry', 'English', 'General Knowledge', 'DBMS', 'Computer Networks', 'Operating Systems'];
-const CLASSES  = ['All Classes', 'CSE A', 'CSE B', 'CSE C'];
+/** Map an evaluation-result document from MongoDB to the ALL_RECORDS row shape. */
+function apiResultToRecord(r, idx) {
+  const max = Number(r.maxMarks) || 0;
+  const marks = Number(r.marks) || 0;
+  return {
+    rank:       idx + 1,
+    name:       r.studentName  || 'Unknown',
+    enrollment: r.rollNumber   || '—',
+    class:      r.classGrade   || '—',
+    subject:    r.subject      || 'Unspecified',
+    marks,
+    max,
+    passed:     max > 0 ? (marks / max) >= 0.33 : false,
+  };
+}
 
 // All available CSV fields with labels and value extractors
 const CSV_FIELDS = [
@@ -280,9 +295,39 @@ function DownloadMenu({ filtered }) {
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function PerformancePage() {
-  const [search,  setSearch]  = useState('');
-  const [subject, setSubject] = useState('All Subjects');
-  const [classF,  setClassF]  = useState('All Classes');
+  const [search,     setSearch]     = useState('');
+  const [subject,    setSubject]    = useState('All Subjects');
+  const [classF,     setClassF]     = useState('All Classes');
+  const [allRecords, setAllRecords] = useState(null); // null = loading
+
+  // Load records from MongoDB on mount
+  useEffect(() => {
+    api.get('/evaluation-results')
+      .then(res => {
+        const data = Array.isArray(res.data) ? res.data : [];
+        if (data.length > 0) {
+          // Sort by marks descending before assigning ranks
+          const sorted = [...data].sort((a, b) => {
+            const pA = Number(a.maxMarks) > 0 ? Number(a.marks) / Number(a.maxMarks) : 0;
+            const pB = Number(b.maxMarks) > 0 ? Number(b.marks) / Number(b.maxMarks) : 0;
+            return pB - pA;
+          });
+          setAllRecords(sorted.map(apiResultToRecord));
+        } else {
+          setAllRecords(MOCK_RECORDS);
+        }
+      })
+      .catch(() => {
+        setAllRecords(MOCK_RECORDS);
+      });
+  }, []);
+
+  // While loading, use mock records so the page doesn't flash empty
+  const ALL_RECORDS = allRecords ?? MOCK_RECORDS;
+
+  // Dynamically build subject/class filter options from actual data
+  const SUBJECTS = ['All Subjects', ...new Set(ALL_RECORDS.map(r => r.subject).filter(Boolean))];
+  const CLASSES  = ['All Classes',  ...new Set(ALL_RECORDS.map(r => r.class).filter(Boolean))];
 
   const filtered = ALL_RECORDS.filter(r =>
     (subject === 'All Subjects' || r.subject === subject) &&

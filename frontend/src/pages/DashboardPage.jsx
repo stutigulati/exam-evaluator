@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { Search, ChevronRight, Eye, Trash2, Users, BookOpen, TrendingUp, Award } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Container, PageHeader } from '../components/layout/Sidebar';
@@ -6,6 +6,7 @@ import { Badge, StatCard } from '../components/ui/primitives';
 import { cn, pctColor } from '../lib/utils';
 import { deleteEvaluationRecord, loadEvaluationRecords } from '../lib/evaluations';
 import { ResultsPanel } from '../components/results/ResultsPanel';
+import { useAuth } from '../lib/auth';
 
 const MOCK_STUDENTS = [
   { id: 1, name: 'Stuti Gulati',    enrollment: 'BT22CSE041', class: 'CSE A',
@@ -217,16 +218,35 @@ function Avatar({ name, size = 'md' }) {
 }
 
 export default function DashboardPage() {
+  const { user } = useAuth();
   const [search,      setSearch]      = useState('');
-  const [records,     setRecords]     = useState(() => loadEvaluationRecords());
+  const [records,     setRecords]     = useState([]);
+  const [loadingRecs, setLoadingRecs] = useState(false);
   const [selectedId,  setSelectedId]  = useState(null);
   const [openReport,  setOpenReport]  = useState(null);
   const [classFilter, setClassFilter] = useState('All Classes');
 
-  useEffect(() => { setRecords(loadEvaluationRecords()); }, []);
+  const refreshRecords = useCallback(async () => {
+    setLoadingRecs(true);
+    try {
+      const data = await loadEvaluationRecords();
+      setRecords(Array.isArray(data) ? data : []);
+    } catch {
+      setRecords([]);
+    } finally {
+      setLoadingRecs(false);
+    }
+  }, []);
+
+  useEffect(() => { refreshRecords(); }, [refreshRecords]);
 
   const savedStudents = useMemo(() => recordsToStudents(records), [records]);
-  const students      = useMemo(() => [...savedStudents, ...MOCK_STUDENTS], [savedStudents]);
+  // Show real students from MongoDB. Fall back to MOCK_STUDENTS only when
+  // no real records exist (useful for first-time setup / unauthenticated view).
+  const students = useMemo(
+    () => savedStudents.length > 0 ? savedStudents : MOCK_STUDENTS,
+    [savedStudents]
+  );
   const selected      = students.find(s => s.id === selectedId) || students[0] || null;
 
   const classOptions = useMemo(() =>
@@ -264,10 +284,10 @@ export default function DashboardPage() {
     ];
   }, [allReports]);
 
-  const handleDeleteReport = (reportId) => {
+  const handleDeleteReport = async (reportId) => {
     if (!reportId) return;
-    deleteEvaluationRecord(reportId);
-    setRecords(loadEvaluationRecords());
+    await deleteEvaluationRecord(reportId);
+    await refreshRecords();
     setOpenReport(null);
   };
 

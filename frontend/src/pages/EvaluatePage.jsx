@@ -5,7 +5,7 @@ import { Container, PageHeader } from '../components/layout/Sidebar';
 import EvaluateForm from '../components/upload/EvaluateForm';
 import { ResultsPanel } from '../components/results/ResultsPanel';
 import BookletAnimation from '../components/animations/BookletAnimation';
-import { saveEvaluationRecord } from '../lib/evaluations';
+// saveEvaluationRecord removed — evaluation results are now saved directly via API
 import { useAuth } from '../lib/auth';
 import { api } from '../lib/api';
 
@@ -281,13 +281,14 @@ export default function EvaluatePage() {
   const handleResult = async (r) => {
     if (!r) { setResult(null); return; }
     const normalized = { ...r, grade_letter: r.grade_letter || r.grade };
-    saveEvaluationRecord(normalized);
+    // Save to MongoDB via the API (no localStorage write needed)
     if (user?.role === 'evaluator' || user?.role === 'gog') {
       try {
         const { answerSheetFile, ...rep } = normalized;
         const saved = await api.post('/evaluation-results', {
           studentName: normalized.studentName || 'Unknown Student',
           rollNumber:  normalized.rollNumber  || '',
+          classGrade:  normalized.classGrade  || '',
           subject:     normalized.subject     || 'Unspecified',
           marks:       Number(normalized.total_marks_awarded) || 0,
           maxMarks:    Number(normalized.total_max_marks)     || 0,
