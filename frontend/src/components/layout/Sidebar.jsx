@@ -4,7 +4,7 @@ import {
   Home, Zap, LayoutDashboard, BarChart2, FlaskConical, UserPlus,
   ChevronLeft, ChevronRight, Activity, ClipboardCheck, FileCheck,
   FileUp, LogIn, LogOut, Settings, ShieldCheck, Users,
-  Crown, Building2, PieChart
+  Crown, Building2, PieChart, Layers
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -35,8 +35,9 @@ const EVALUATOR_NAV = [
   { href: '/evaluator/evaluate',  label: 'Run Evaluation',    icon: Zap             },
   { href: '/evaluator/question',  label: 'Question Paper',    icon: FileUp          },
   { href: '/evaluator/ideal',     label: 'Ideal Answer',      icon: FileCheck       },
-  { href: '/evaluator/downloads', label: 'Reports',           icon: FileCheck       },
-  { href: '/performance',         label: 'Performance',       icon: BarChart2       },
+  { href: '/evaluator/downloads',   label: 'Reports',           icon: FileCheck       },
+  { href: '/bulk-evaluation',       label: 'Bulk Evaluation',   icon: Layers          },
+  { href: '/performance',           label: 'Performance',       icon: BarChart2       },
 ];
 
 // ── Admin nav items (shared by admin + super_admin) ──
@@ -177,7 +178,7 @@ export default function Sidebar() {
           const { href, label, icon: Icon } = item;
           // Routes that must use EXACT match (not startsWith) to avoid clashes
           // between e.g. '/dashboard' (evaluator generic) and '/gog/dashboard' (GoG).
-          const EXACT_MATCH_ROUTES = ['/', '/dashboard', '/performance'];
+          const EXACT_MATCH_ROUTES = ['/', '/dashboard', '/performance', '/bulk-evaluation'];
           const active = EXACT_MATCH_ROUTES.includes(href)
             ? pathname === href
             : pathname === href || pathname.startsWith(href + '/');

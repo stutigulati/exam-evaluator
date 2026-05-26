@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Save, CheckCircle, XCircle, AlertTriangle, Edit3, ShieldCheck, ChevronDown, ChevronUp } from 'lucide-react';
+import { Save, CheckCircle, XCircle, AlertTriangle, Edit3, ShieldCheck, ChevronDown, ChevronUp, ScanLine, Sparkles, Eye } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { cn, pctColor } from '../../lib/utils';
 import { TagList } from '../ui/primitives';
@@ -103,6 +103,103 @@ export default function QuestionMarksTab({ result, onUpdateResult }) {
           <span className="text-xs" style={{ color: '#80804a' }}>Marks have been manually verified</span>
         </div>
       )}
+
+      {/* ── OCR Accuracy + Leniency banner ─────────────────────────────── */}
+      {(() => {
+        const acc       = result?.ocr_review?.accuracy_percent;
+        const accLabel  = result?.ocr_review?.accuracy_label;
+        const corrCount = result?.ocr_review?.total_corrections || 0;
+        const wordCount = result?.ocr_review?.total_words       || 0;
+        const lenLevel  = result?.leniency;
+
+        // Color by accuracy band
+        const accColor = acc == null
+          ? '#7f867c'
+          : acc >= 95 ? '#00d99b'
+          : acc >= 85 ? '#3ee67f'
+          : acc >= 70 ? '#fbbf24'
+          : '#f87171';
+
+        const lenColor = lenLevel == null
+          ? '#7f867c'
+          : lenLevel <= 3 ? '#f87171'
+          : lenLevel <= 6 ? '#fbbf24'
+          : '#3ee67f';
+        const lenLabel = lenLevel == null
+          ? '—'
+          : lenLevel <= 3 ? 'Strict'
+          : lenLevel <= 6 ? 'Balanced'
+          : 'Lenient';
+
+        return (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+
+            {/* OCR Accuracy card */}
+            <div className="rounded-lg px-3 py-2.5 flex items-center gap-3"
+              style={{ background: `${accColor}10`, border: `1px solid ${accColor}33` }}>
+              <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
+                style={{ background: `${accColor}20`, border: `1px solid ${accColor}55` }}>
+                <Eye size={14} style={{ color: accColor }} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider"
+                    style={{ color: '#8a9087' }}>
+                    OCR Accuracy
+                  </span>
+                  {accLabel && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold"
+                      style={{ background: `${accColor}22`, color: accColor }}>
+                      {accLabel}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-baseline gap-2 mt-0.5">
+                  <span className="text-lg font-bold font-mono leading-none"
+                    style={{ color: accColor }}>
+                    {acc != null ? `${acc}%` : '—'}
+                  </span>
+                  {wordCount > 0 && (
+                    <span className="text-[10px]" style={{ color: '#61665f' }}>
+                      {corrCount} correction{corrCount === 1 ? '' : 's'} in {wordCount} words
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Leniency check card */}
+            <div className="rounded-lg px-3 py-2.5 flex items-center gap-3"
+              style={{ background: `${lenColor}10`, border: `1px solid ${lenColor}33` }}>
+              <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
+                style={{ background: `${lenColor}20`, border: `1px solid ${lenColor}55` }}>
+                <ShieldCheck size={14} style={{ color: lenColor }} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider"
+                    style={{ color: '#8a9087' }}>
+                    Leniency Applied
+                  </span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold"
+                    style={{ background: `${lenColor}22`, color: lenColor }}>
+                    {lenLabel}
+                  </span>
+                </div>
+                <div className="flex items-baseline gap-2 mt-0.5">
+                  <span className="text-lg font-bold font-mono leading-none"
+                    style={{ color: lenColor }}>
+                    {lenLevel != null ? `${lenLevel}/10` : '—'}
+                  </span>
+                  <span className="text-[10px]" style={{ color: '#61665f' }}>
+                    grading strictness used for this evaluation
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Question cards */}
       {editedQuestions.map((q, i) => {
@@ -270,6 +367,52 @@ export default function QuestionMarksTab({ result, onUpdateResult }) {
   >
     {q.ocr_warning || 'No OCR warning for this answer.'}
   </p>
+</FeedbackRow>
+
+{/* ── Gemini Corrections dropdown — right below OCR Review Note ── */}
+<FeedbackRow
+  icon={Sparkles}
+  iconColor={q.ocr_corrections?.length ? '#00d99b' : '#61665f'}
+  label="Gemini Corrections"
+  count={q.ocr_corrections?.length || 0}
+>
+  {q.ocr_corrections?.length ? (
+    <div className="space-y-2">
+      <p className="text-[11px] mb-2" style={{ color: '#7f867c' }}>
+        Gemini re-checked the answer sheet image and corrected these OCR mis-reads before grading:
+      </p>
+      {q.ocr_corrections.map((c, ci) => (
+        <div key={ci} className="rounded-lg px-3 py-2"
+          style={{ background: 'rgba(0,200,150,0.04)', border: '1px solid rgba(0,200,150,0.14)' }}>
+          <div className="flex items-center gap-2 flex-wrap">
+            <ScanLine size={11} style={{ color: '#7f867c', flexShrink: 0 }} />
+            <span className="text-xs font-mono px-1.5 py-0.5 rounded line-through"
+              style={{
+                background: 'rgba(239,68,68,0.1)',
+                color: '#f87171',
+                textDecorationColor: '#f87171',
+              }}>
+              {c.ocr}
+            </span>
+            <span className="text-xs" style={{ color: '#61665f' }}>→</span>
+            <span className="text-xs font-mono px-1.5 py-0.5 rounded"
+              style={{ background: 'rgba(0,200,150,0.12)', color: '#00d99b' }}>
+              {c.actual}
+            </span>
+          </div>
+          {c.context && (
+            <p className="text-[11px] mt-1.5 italic pl-5" style={{ color: '#7f867c' }}>
+              “…{c.context}…”
+            </p>
+          )}
+        </div>
+      ))}
+    </div>
+  ) : (
+    <p className="text-xs leading-relaxed" style={{ color: '#7f867c' }}>
+      No OCR corrections were needed for this question — Gemini found the OCR text accurate.
+    </p>
+  )}
 </FeedbackRow>
                 </div>
               </div>

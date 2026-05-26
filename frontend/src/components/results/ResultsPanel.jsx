@@ -641,7 +641,7 @@ export function ResultsPanel({ result: initialResult, onClose, onDelete }) {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => downloadDetailedReport(result)}
+          <button onClick={() => downloadPrintableReport(result)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
             style={{ background: 'linear-gradient(135deg,#00c896,#3ee67f)', color: '#04110b', boxShadow: '0 0 12px rgba(0,200,150,0.3)' }}>
             <Download size={12} /> Download PDF

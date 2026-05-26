@@ -13,6 +13,7 @@ import BenchmarkPage from './pages/BenchmarkPage';
 import RoleWorkspace from './pages/RoleWorkspace';
 import './styles/globals.css';
 import GogDashboard from './pages/GogDashboard';
+import BulkEvaluationPage from './pages/BulkEvaluationPage';
 
 // Role hierarchy constants — reused across all route guards
 const ALL_STAFF      = ['evaluator', 'admin', 'super_admin', 'gog'];
@@ -60,6 +61,13 @@ ReactDOM.createRoot(document.getElementById('root')).render(
               <Route path="/benchmark" element={
                 <ProtectedRoute roles={ALL_STAFF}>
                   <BenchmarkPage />
+                </ProtectedRoute>
+              } />
+
+              {/* Bulk Evaluation page */}
+              <Route path="/bulk-evaluation" element={
+                <ProtectedRoute roles={ALL_STAFF}>
+                  <BulkEvaluationPage />
                 </ProtectedRoute>
               } />
 

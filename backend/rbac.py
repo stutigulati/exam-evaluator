@@ -22,6 +22,12 @@ try:
 except Exception:
     _PYMONGO_AVAILABLE = False
 
+try:
+    import certifi as _certifi
+    _CERTIFI_CA = _certifi.where()
+except Exception:
+    _CERTIFI_CA = None
+
 router = APIRouter(prefix="/api", tags=["RBAC"])
 ROLES = {"gog", "super_admin", "admin", "evaluator"}
 
@@ -244,12 +250,14 @@ def get_db():
         return _mongo_db_instance
 
     try:
-        _mongo_client = MongoClient(
-            mongodb_uri,
+        _client_kwargs: Dict[str, Any] = dict(
             serverSelectionTimeoutMS=10_000,
             connectTimeoutMS=10_000,
             socketTimeoutMS=30_000,
         )
+        if _CERTIFI_CA:
+            _client_kwargs["tlsCAFile"] = _CERTIFI_CA
+        _mongo_client = MongoClient(mongodb_uri, **_client_kwargs)
         # Verify connection
         _mongo_client.admin.command("ping")
         db_name = os.getenv("MONGODB_DB_NAME", "gradeai")

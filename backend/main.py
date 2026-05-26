@@ -21,6 +21,7 @@ from services import gemini_ocr, google_vision_ocr, paddle_ocr, tesseract_ocr
 
 import google.generativeai as genai
 from rbac import router as rbac_router, get_db, record_cost, decode_token
+from bulk_evaluation import router as bulk_router
 
 app = FastAPI(title="GradeAI API", version="3.0.0")
 
@@ -32,6 +33,7 @@ app.add_middleware(
 )
 
 app.include_router(rbac_router)
+app.include_router(bulk_router)
 
 ALLOWED_MIME = {
     "image/jpeg",
@@ -143,12 +145,102 @@ def _grade(pct):
 
 
 def _leniency_instruction(v):
-    if v <= 3:
-        return f"LENIENCY {v}/10 — VERY STRICT. Penalise every missing concept. Competitive exam standard."
-    elif v <= 6:
-        return f"LENIENCY {v}/10 — MODERATE. Fair balanced grading, partial credit for partial understanding."
-    else:
-        return f"LENIENCY {v}/10 — LENIENT. Reward effort. Tolerate minor errors. Focus on what student got right."
+    """
+    Per-level leniency instructions. Each level gives Gemini a CONCRETE rule
+    about partial credit, spelling, and conceptual gaps — not just a vague
+    'be strict' / 'be lenient'. This is what makes leniency actually affect
+    the marks awarded.
+    """
+    v = max(1, min(10, int(v)))
+
+    if v == 1:
+        return (
+            "LENIENCY 1/10 — EXTREMELY STRICT (Olympiad / competitive exam grade).\n"
+            "• Every single key point must be present AND correctly explained for full marks.\n"
+            "• Any missing concept → deduct at least 30% of that question's marks.\n"
+            "• Wrong terminology, even if the idea is right, loses marks.\n"
+            "• Spelling errors in technical/key terms: deduct 10%.\n"
+            "• Partial answers get at most 25% of the marks even if direction is correct.\n"
+            "• Never give full marks unless answer is textbook-perfect."
+        )
+    if v == 2:
+        return (
+            "LENIENCY 2/10 — VERY STRICT (board exam, top-tier grading).\n"
+            "• Demand all key points; missing one major point → deduct 25%.\n"
+            "• Wrong technical terms lose marks even if intent is clear.\n"
+            "• Reward only what is explicitly written, never assumed.\n"
+            "• Partial answers max 35%.\n"
+            "• Full marks only for complete, accurate, well-structured answers."
+        )
+    if v == 3:
+        return (
+            "LENIENCY 3/10 — STRICT (university exam, sharp grading).\n"
+            "• Penalise missing key points clearly: each missing point → 20% off.\n"
+            "• Minor terminology slips: deduct 5–10%.\n"
+            "• Spelling of common words: ignored. Technical terms: deduct.\n"
+            "• Partial answers get 40–50% based on how much is correct.\n"
+            "• Full marks need every required point present."
+        )
+    if v == 4:
+        return (
+            "LENIENCY 4/10 — MODERATELY STRICT (standard semester exam).\n"
+            "• Each missing key point → 15% deduction.\n"
+            "• Minor wording differences are tolerated if meaning is intact.\n"
+            "• Reward correct attempts even if explanation is brief.\n"
+            "• Partial answers: 50% if main idea is captured.\n"
+            "• Full marks for thorough, mostly-correct answers."
+        )
+    if v == 5:
+        return (
+            "LENIENCY 5/10 — BALANCED (default fair grading).\n"
+            "• Each missing key point → 10–15% deduction.\n"
+            "• Tolerate spelling/grammar mistakes; focus on the concept.\n"
+            "• Brief but correct answers can earn 70–80%.\n"
+            "• Partial answers: 50–60% if direction is correct.\n"
+            "• Full marks for clearly correct, complete answers."
+        )
+    if v == 6:
+        return (
+            "LENIENCY 6/10 — MILDLY LENIENT (encourage learning).\n"
+            "• Each missing key point → 10% deduction (max).\n"
+            "• Ignore minor terminology slips entirely.\n"
+            "• Reward conceptual understanding over precise wording.\n"
+            "• Partial answers: 60–70% if the core idea is right.\n"
+            "• Full marks for solid attempts with most key ideas covered."
+        )
+    if v == 7:
+        return (
+            "LENIENCY 7/10 — LENIENT (formative assessment, encouragement-first).\n"
+            "• Missing minor points → 5% deduction; missing major point → 15%.\n"
+            "• Forgive almost all spelling/grammar; reward effort visible in writing.\n"
+            "• Partial answers earn 65–75% if student shows understanding.\n"
+            "• Full marks if main concept is correctly expressed, even if brief."
+        )
+    if v == 8:
+        return (
+            "LENIENCY 8/10 — QUITE LENIENT (early-stage learners).\n"
+            "• Heavy weight on what student got RIGHT, light deduction for gaps.\n"
+            "• Reward any genuine attempt with at least 40% if not blank.\n"
+            "• Partial answers: 70–80% if direction is correct.\n"
+            "• Full marks for answers that show the core understanding."
+        )
+    if v == 9:
+        return (
+            "LENIENCY 9/10 — VERY LENIENT (confidence-building grading).\n"
+            "• Award credit generously for any attempt in the right direction.\n"
+            "• Spelling, grammar, and structure are not penalised.\n"
+            "• Partial answers easily earn 75–85%.\n"
+            "• Full marks for answers touching the core idea, even briefly."
+        )
+    # v == 10
+    return (
+        "LENIENCY 10/10 — MAXIMUM LENIENT (participation-style grading).\n"
+        "• Reward effort over accuracy.\n"
+        "• Any reasonable attempt scores 60% or higher.\n"
+        "• Penalise only completely wrong or blank answers.\n"
+        "• Partial answers: 80%+ if any understanding is shown.\n"
+        "• Full marks for answers that broadly touch the right concept."
+    )
 
 
 def _normalize_answer_text(text):
@@ -205,13 +297,6 @@ def _extract_attempt_any_rules(qp_text):
     text = re.sub(r"\s+", " ", str(qp_text or " "))
     rules = []
     number_words_pattern = "one|two|three|four|five|six|seven|eight|nine|ten|\\d+"
-    # Verbs that indicate the student gets to CHOOSE which N questions to answer.
-    # "attempt only 2", "answer any 3", "do any two", "solve any 2", "write any 3"
-    choose_verb = (
-        r"(?:attempt|answer|solve|do|write|complete)"
-        r"\s+"
-        r"(?:any|only|just)"
-    )
 
     def latest_section_hint(context):
         matches = list(re.finditer(
@@ -224,7 +309,7 @@ def _extract_attempt_any_rules(qp_text):
     # ── Pattern A: full formula ─────────────────────────────────────────────
     # "attempt any 3 ... 10 marks × 3 = 30 marks"
     formula_pattern = re.compile(
-        rf"(?P<context>.{{0,220}}?){choose_verb}\s+(?P<count>{number_words_pattern})"
+        rf"(?P<context>.{{0,220}}?)(?:attempt|answer|solve)\s+any\s+(?P<count>{number_words_pattern})"
         rf".{{0,140}}?(?P<per>\d+(?:\.\d+)?)\s*marks?\s*[x×]\s*(?P<count2>{number_words_pattern})"
         r".{0,40}?=\s*(?P<total>\d+(?:\.\d+)?)\s*marks?",
         re.IGNORECASE,
@@ -246,16 +331,13 @@ def _extract_attempt_any_rules(qp_text):
             "section_hint": section_hint,
         })
 
-    # ── Pattern B: simple "attempt any/only N (out of/from M)" + optional marks each ─
-    # Now catches:
-    #   "attempt any 3 questions, 5 marks each"
-    #   "answer any 4 of the following questions (2 marks each)"
-    #   "attempt only 2 questions out of 5"          ← previously missed
-    #   "solve any 2 from the following"             ← previously missed
-    #   "do any two questions"                       ← previously missed
+    # ── Pattern B: simple "attempt any N" + marks each ──────────────────────
+    # "attempt any 3 questions, 5 marks each"
+    # "answer any 4 of the following questions (2 marks each)"
+    # "attempt any three out of five (10 marks)"
     simple_pattern = re.compile(
-        rf"(?P<context>.{{0,220}}?){choose_verb}\s+(?P<count>{number_words_pattern})"
-        rf"(?:\s+(?:out\s+of|from)\s+(?:{number_words_pattern})?)?"
+        rf"(?P<context>.{{0,220}}?)(?:attempt|answer|solve)\s+any\s+(?P<count>{number_words_pattern})"
+        rf"(?:\s+out\s+of\s+(?:{number_words_pattern}))?"
         r"(?:[^.]{0,80}?(?P<per>\d+(?:\.\d+)?)\s*marks?\s*each)?",
         re.IGNORECASE,
     )
@@ -271,12 +353,12 @@ def _extract_attempt_any_rules(qp_text):
         per = float(per_raw) if per_raw else None
         context = match.group("context") or ""
         section_hint = latest_section_hint(context)
-        # Accept the rule even without per_marks AND without a section hint —
-        # we'll infer per_marks from the matched questions' max_marks later.
+        if per is None and not section_hint:
+            continue
         rules.append({
             "count":        count,
             "count2":       count,
-            "per_marks":    per,          # may be None — handled in _apply_attempt_any_caps
+            "per_marks":    per,          # may be None — handled in _matches_attempt_rule
             "total_marks":  (per * count) if per else None,   # may be None
             "section_hint": section_hint,
         })
@@ -389,13 +471,10 @@ def _matches_attempt_rule(question, rule):
     if rule_key and not question_key and hint and section and not (hint in section or section in hint):
         return False
 
-    # If per_marks is unknown (simple pattern without "X marks each"):
-    # - If a section hint exists, match only questions in that section.
-    # - If no section hint, this is a paper-wide rule ("Attempt only 2 questions
-    #   out of 5"): match any question that hasn't been excluded.
+    # If per_marks is unknown (simple pattern without "X marks each"), match any question
     if per is None:
         if not hint:
-            return True
+            return False
         return hint in section or section in hint
 
     if abs(max_marks - per) > 0.25:
@@ -618,6 +697,12 @@ ANSWER SHEET:
 
 Evaluate each question carefully.
 
+CRITICAL — LENIENCY ENFORCEMENT (READ FIRST):
+- The leniency level above is NOT decorative. EVERY mark you award must follow its rules.
+- Before writing marks_awarded for a question, ask: "Given this leniency level, how many marks does this answer deserve?" The same answer must score DIFFERENTLY at leniency 2 vs leniency 8.
+- Mention the leniency level in marking_rationale so the rationale shows why the marks fit that strictness.
+- Do NOT default to ~70% of max for every question. Spread marks across the full 0-to-max range based on the leniency rules.
+
 Important grading rules:
 - First read the ENTIRE question paper and identify ALL sections, passages, groups, questions, and subquestions.
 - Do not evaluate only Section 1. If the paper has Section A/B/C or multiple passages, evaluate every section.
@@ -671,6 +756,220 @@ Return ONLY valid JSON in this exact format:
 
 Return ONLY JSON.
 """
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Gemini OCR Reconciliation
+# ──────────────────────────────────────────────────────────────────────────
+# Google Vision reads the file first (fast, structured).
+# Then we send BOTH the original file (image OR PDF) + the Vision OCR text
+# to Gemini and ask it to reconcile — using the file as ground truth and
+# the OCR as a starting draft.
+#
+# KEY DIFFERENCE from old approach:
+#   Old: skipped PDFs entirely ("non-image" early return)
+#   New: supports image/* AND application/pdf — Gemini handles both natively
+#
+# Result: best-of-both-worlds text, corrections list for the UI, confidence.
+# Falls back to original OCR on any error — never breaks evaluation.
+# ──────────────────────────────────────────────────────────────────────────
+
+def _gemini_reconcile_ocr(
+    file_bytes: bytes,
+    mime_type: str,
+    ocr_text: str,
+    label: str = "answer sheet",
+) -> dict:
+    """
+    Send the original file (image OR PDF) + Google Vision OCR text to Gemini.
+    Gemini compares both, fixes mis-reads, and returns the most accurate text.
+
+    Supports:
+        image/jpeg, image/png, image/webp, image/bmp, image/tiff  — inline image
+        application/pdf                                             — inline PDF (Gemini native)
+
+    Returns dict with keys:
+        corrected_text   — final best text (use this for grading)
+        corrections      — list of {ocr, actual, context} dicts for UI
+        confidence       — float 0.0–1.0
+        usage            — token counts
+        skipped          — set if the MIME type is unsupported (rare)
+        error            — set on exception
+    """
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key or not ocr_text.strip():
+        return {"corrected_text": ocr_text, "corrections": [], "confidence": 0.0, "usage": {}}
+
+    # Gemini supports: image/* and application/pdf as inline data.
+    # Anything else (e.g. application/docx) cannot be sent — skip gracefully.
+    supported = mime_type.startswith("image/") or mime_type == "application/pdf"
+    if not supported:
+        return {
+            "corrected_text": ocr_text,
+            "corrections":    [],
+            "confidence":     0.0,
+            "usage":          {},
+            "skipped":        f"unsupported MIME for Gemini reconciliation: {mime_type}",
+        }
+
+    try:
+        genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+        model = genai.GenerativeModel(GEMINI_MODEL)
+
+        file_type_label = "PDF document" if mime_type == "application/pdf" else "image"
+
+        prompt = f"""You are an expert OCR reconciliation engine.
+
+You have been given TWO inputs for the same {label}:
+  1. The ORIGINAL {file_type_label} (attached above)
+  2. The GOOGLE VISION OCR TEXT extracted from it (shown below)
+
+Your job is to produce the most accurate possible transcription by:
+  a) Reading the original {file_type_label} directly with your own vision.
+  b) Comparing what you see against the Google Vision OCR text.
+  c) Fixing every place where Vision made a mistake (wrong character, joined/split
+     words, garbled handwriting, missed line, etc.).
+  d) Keeping anything that Vision got right — do not re-invent text needlessly.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STRICT RULES — follow exactly:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. NEVER correct the student's own spelling or grammar mistakes.
+   If the student wrote "kernal" you must keep "kernal" — not "kernel".
+2. NEVER add content that is not physically present in the {file_type_label}.
+3. NEVER remove content that IS present, even if it looks wrong or incomplete.
+4. For truly illegible handwriting that neither you nor Vision could read,
+   write [illegible] and list it in corrections with actual="[illegible]".
+5. Preserve the original structure: question numbers, answer groupings,
+   paragraph breaks, numbered/lettered lists — exactly as laid out.
+6. For crossed-out / cancelled text, keep it as ~~cancelled text~~.
+7. For PDFs with multiple pages, transcribe ALL pages in order.
+
+GOOGLE VISION OCR TEXT:
+\"\"\"
+{ocr_text}
+\"\"\"
+
+Return ONLY this JSON (no markdown fences, no preamble):
+{{
+  "corrected_text": "<complete reconciled text — every page, every line>",
+  "corrections": [
+    {{
+      "ocr":     "<exactly what Vision OCR read>",
+      "actual":  "<what is actually written in the {file_type_label}>",
+      "context": "<5-10 surrounding words so the UI can locate this correction>"
+    }}
+  ],
+  "confidence": <0.0 to 1.0>,
+  "pages_checked": <number of pages you examined>
+}}
+
+If Vision OCR was already perfect: return the same text with an empty
+corrections list and confidence 0.97.
+"""
+
+        # Build the content parts list.
+        # Gemini accepts both image/* and application/pdf as inline Part data.
+        content_parts = [
+            {"mime_type": mime_type, "data": file_bytes},
+            prompt,
+        ]
+
+        response = model.generate_content(
+            content_parts,
+            generation_config=genai.GenerationConfig(
+                temperature=0.05,          # very low — faithful transcription
+                max_output_tokens=AI_MAX_OUTPUT_TOKENS,
+                response_mime_type="application/json",
+            ),
+            request_options={"timeout": AI_TIMEOUT_SECONDS},
+        )
+
+        # ── Token usage ───────────────────────────────────────────────────
+        usage = {}
+        try:
+            if hasattr(response, "usage_metadata"):
+                um = response.usage_metadata
+                usage = {
+                    "input_tokens":  getattr(um, "prompt_token_count",     0),
+                    "output_tokens": getattr(um, "candidates_token_count", 0),
+                    "total_tokens":  getattr(um, "total_token_count",      0),
+                }
+        except Exception:
+            pass
+
+        # ── Parse response ────────────────────────────────────────────────
+        cleaned = _clean_json(response.text)
+        try:
+            data = _parse_json(cleaned)
+        except JSONDecodeError:
+            data = _repair_json_with_gemini(model, cleaned)
+
+        corrected       = str(data.get("corrected_text", "") or "").strip() or ocr_text
+        corrections_raw = data.get("corrections", []) or []
+        confidence      = float(data.get("confidence",      0.7) or 0.7)
+        pages_checked   = int(data.get("pages_checked",     1)   or 1)
+
+        # ── Filter trivial / duplicate corrections ────────────────────────
+        meaningful = []
+        seen = set()
+        for c in corrections_raw:
+            ocr_w    = str(c.get("ocr",    "") or "").strip()
+            actual_w = str(c.get("actual", "") or "").strip()
+            if not ocr_w or not actual_w:
+                continue
+            if ocr_w.lower() == actual_w.lower():
+                continue                         # no real change
+            key = (ocr_w.lower(), actual_w.lower())
+            if key in seen:
+                continue                         # duplicate
+            seen.add(key)
+            meaningful.append({
+                "ocr":     ocr_w,
+                "actual":  actual_w,
+                "context": str(c.get("context", "") or "").strip()[:200],
+            })
+
+        return {
+            "corrected_text": corrected,
+            "corrections":    meaningful,
+            "confidence":     max(0.0, min(1.0, confidence)),
+            "pages_checked":  pages_checked,
+            "usage":          usage,
+        }
+
+    except Exception as e:
+        print(f"⚠ Gemini OCR reconciliation skipped ({label}): {e}")
+        return {
+            "corrected_text": ocr_text,
+            "corrections":    [],
+            "confidence":     0.0,
+            "usage":          {},
+            "error":          str(e),
+        }
+
+
+def _attach_corrections_to_questions(questions, corrections):
+    """
+    For each question, find which OCR corrections fall inside its student_answer
+    so the UI can show 'OCR read X, Gemini corrected to Y' per question.
+    """
+    if not corrections:
+        return
+    for q in questions:
+        ans = str(q.get("student_answer", "") or "")
+        if not ans:
+            continue
+        q_corrections = []
+        ans_lower = ans.lower()
+        for c in corrections:
+            ocr_token = c.get("ocr", "").lower()
+            context   = c.get("context", "").lower()
+            # Match either the raw OCR token or its surrounding context
+            if (ocr_token and ocr_token in ans_lower) or (context and context[:40] and context[:40] in ans_lower):
+                q_corrections.append(c)
+        if q_corrections:
+            q["ocr_corrections"] = q_corrections
 
 
 def _run_evaluation(qp_text, as_text, leniency, ms=""):
@@ -768,25 +1067,9 @@ def _run_evaluation(qp_text, as_text, leniency, ms=""):
     questions = _deduplicate_or_questions(questions)
     capped_awarded, capped_max, applied_attempt_cap = _apply_attempt_any_caps(questions, qp_text)
 
-    # Always extract the paper's declared total (e.g. "Maximum Marks: 60").
-    # This is the AUTHORITATIVE total — it overrides over-counted sums from
-    # the LLM when the AI extracts more questions than the paper actually has.
-    declared_total = round(_extract_declared_total_marks(qp_text), 1)
-
     if applied_attempt_cap and capped_max > 0:
         total_awarded = capped_awarded
         total_max     = capped_max
-        # Even with attempt-caps applied, if the paper declares an explicit
-        # maximum (e.g. "Maximum Marks: 60") and it is smaller than what we
-        # computed, the declared total wins. This catches cases where a
-        # section says "Attempt Any 4 Questions" but the paper printed 6
-        # questions, and the LLM extracted all 6 — capping to 4 still leaves
-        # extra marks in the denominator from the other sections.
-        if declared_total > 0 and declared_total < total_max:
-            # Scale awarded proportionally so percentage stays consistent.
-            if total_max > 0:
-                total_awarded = round(total_awarded * (declared_total / total_max), 1)
-            total_max = declared_total
     else:
         # Sum only questions that count toward the total
         active_questions = [q for q in questions if not q.get("excluded_from_total")]
@@ -798,12 +1081,16 @@ def _run_evaluation(qp_text, as_text, leniency, ms=""):
             1,
         )
 
-        # If the question paper header declares a total and it's ≤ the summed max,
-        # trust the declared total (catches remaining over-count edge cases).
-        if declared_total > 0 and declared_total <= summed_max:
-            total_max = declared_total
-        elif total_max <= 0:
+        if total_max <= 0:
             total_max = summed_max
+
+    # ── Hard cap: question paper header mein jo "Maximum Marks" likha hai
+    # woh HAMESHA final total_max se zyada nahi hona chahiye.
+    # Yeh fix karta hai jab Gemini 80 return kare aur paper mein 60 likha ho.
+    declared_total = round(_extract_declared_total_marks(qp_text), 1)
+    if declared_total > 0 and total_max > declared_total:
+        total_max     = declared_total
+        total_awarded = min(total_awarded, declared_total)
 
     percentage = round(
         (total_awarded / total_max * 100) if total_max > 0 else 0,
@@ -917,7 +1204,26 @@ async def evaluate(
         + int(as_ocr.get("pages_processed", 1))
     )
 
-    # Marking scheme OCR also uses Google Vision
+    # ── Gemini OCR Reconciliation ───────────────────────────────────────────
+    # Send the original file (image OR PDF) + Google Vision OCR text to Gemini.
+    # Gemini reads the file directly, compares with Vision's output, and returns
+    # the most accurate reconciled text.  Works for both images and PDFs.
+    as_correction = _gemini_reconcile_ocr(
+        as_bytes,
+        answer_sheet.content_type or "image/jpeg",
+        as_text,
+        label="answer sheet",
+    )
+
+    # Use the reconciled text for grading IF Gemini was confident enough.
+    # Threshold 0.45 — slightly lower than before so PDF corrections are used
+    # (PDFs were previously skipped entirely, so any improvement is a gain).
+    if as_correction.get("corrected_text") and as_correction.get("confidence", 0) >= 0.45:
+        as_text_for_grading = as_correction["corrected_text"]
+    else:
+        as_text_for_grading = as_text
+
+    # ── Marking scheme OCR + Gemini reconciliation ─────────────────────────
     ms = marking_scheme_text.strip()
 
     if marking_scheme_file and marking_scheme_file.filename:
@@ -933,6 +1239,20 @@ async def evaluate(
                 ms_ocr = ms_ocr_result["extracted_text"]
                 ocr_units += int(ms_ocr_result.get("pages_processed", 1))
 
+                # Reconcile marking scheme OCR with Gemini (supports PDF too)
+                ms_correction = _gemini_reconcile_ocr(
+                    ms_bytes,
+                    marking_scheme_file.content_type or "image/jpeg",
+                    ms_ocr,
+                    label="marking scheme",
+                )
+                if ms_correction.get("corrected_text") and ms_correction.get("confidence", 0) >= 0.45:
+                    ms_ocr = ms_correction["corrected_text"]
+                    # Add marking scheme reconciliation tokens to total usage
+                    _ms_usage = ms_correction.get("usage", {})
+                else:
+                    _ms_usage = {}
+
                 ms = (ms_ocr + "\n\n" + ms).strip()
 
             except Exception as e:
@@ -941,11 +1261,12 @@ async def evaluate(
                     detail=f"Google Vision OCR failed for marking scheme: {e}",
                 )
 
-    # AI Evaluation uses Gemini
+    # AI Evaluation uses Gemini — pass the corrected OCR text so the grader
+    # doesn't lose marks on mis-read handwriting.
     try:
         result = _run_evaluation(
             qp_text,
-            as_text,
+            as_text_for_grading,
             leniency,
             ms,
         )
@@ -964,12 +1285,67 @@ async def evaluate(
             detail=f"AI evaluation failed: {err}",
         )
 
-    result["ocr_engine_used"] = "google_vision"
+    # Attach per-question OCR corrections (UI shows them in OCR Review tab)
+    _attach_corrections_to_questions(result.get("questions", []), as_correction.get("corrections", []))
+
+    # ── OCR accuracy metric ────────────────────────────────────────────────
+    # Show the user how reliable the OCR was on this answer sheet.
+    # Formula: (total_words − corrections) / total_words × 100
+    # If OCR text is very short (e.g. blank sheet), accuracy is reported as 100
+    # so we don't display misleading "0%" for empty answers.
+    _ocr_word_count   = len([w for w in re.split(r"\s+", as_text) if w.strip()])
+    _corrections_count = len(as_correction.get("corrections", []))
+    if _ocr_word_count >= 5:
+        _ocr_accuracy = round(
+            max(0.0, (_ocr_word_count - _corrections_count) / _ocr_word_count) * 100,
+            1,
+        )
+    else:
+        _ocr_accuracy = 100.0
+
+    # Human-friendly label so UI can pick a color/badge
+    if _ocr_accuracy >= 95:
+        _accuracy_label = "Excellent"
+    elif _ocr_accuracy >= 85:
+        _accuracy_label = "Good"
+    elif _ocr_accuracy >= 70:
+        _accuracy_label = "Fair"
+    else:
+        _accuracy_label = "Poor"
+
+    result["ocr_engine_used"] = "google_vision+gemini_reconcile"
     result["question_paper_text"] = qp_text
-    result["answer_sheet_text"] = as_text
+    result["answer_sheet_text"] = as_text                           # original Vision OCR
+    result["answer_sheet_text_corrected"] = as_correction.get("corrected_text", as_text)
     result["question_paper_ocr"] = qp_ocr
     result["answer_sheet_ocr"] = as_ocr
-    result["cost"] = _build_cost(result.get("usage", {}), ocr_units)
+    result["ocr_review"] = {
+        "corrections":           as_correction.get("corrections", []),
+        "confidence":            as_correction.get("confidence", 0.0),
+        "pages_checked":         as_correction.get("pages_checked", 1),
+        "total_corrections":     _corrections_count,
+        "total_words":           _ocr_word_count,
+        "accuracy_percent":      _ocr_accuracy,
+        "accuracy_label":        _accuracy_label,
+        "used_corrected_text":   bool(as_correction.get("corrected_text") and as_correction.get("confidence", 0) >= 0.45),
+        "reconciliation_method": "gemini_image_pdf",        # PDFs now supported
+        "skipped":               as_correction.get("skipped"),
+        "error":                 as_correction.get("error"),
+    }
+
+    # Combine grading + reconciliation token usage so cost dashboards stay accurate
+    def _sum_usage(*usages):
+        return {
+            "input_tokens":  sum(int((u or {}).get("input_tokens",  0)) for u in usages),
+            "output_tokens": sum(int((u or {}).get("output_tokens", 0)) for u in usages),
+            "total_tokens":  sum(int((u or {}).get("total_tokens",  0)) for u in usages),
+        }
+
+    grading_usage    = result.get("usage", {}) or {}
+    correction_usage = as_correction.get("usage", {}) or {}
+    ms_usage_final   = locals().get("_ms_usage", {}) or {}
+    result["usage"]  = _sum_usage(grading_usage, correction_usage, ms_usage_final)
+    result["cost"] = _build_cost(result["usage"], ocr_units)
 
     # ── Record token cost → visible in GoG Token Analysis dashboard ──
     try:
